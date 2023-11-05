@@ -1,0 +1,107 @@
+---
+title: "NYPD Shooting Incident Project"
+author: "Allison Flors"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This is an exploratory analysis of the NYPD Shooting Incident Data from 2006-2022. This data is provided by the city of New York (data.cityofnewyork.us). 
+
+Here is a summary of the data taken directly from the source: 
+
+"This is a breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record represents a shooting incident in NYC and includes information about the event, the location and time of occurrence. In addition, information related to suspect and victim demographics is also included."
+
+Visualizations and models will be used to begin exploring trends and questions that come from this data.
+
+## Import Data
+```{r getdata} 
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+library(readr)  # Load the readr package
+nypd_shooting <- read_csv(url_in)
+```
+# Incidents Per Year (Graph & Model)
+
+```{r timeseries, message=FALSE}
+library(tidyverse)
+library(lubridate)
+
+nypd_shooting$OCCUR_DATE <- dmy(nypd_shooting$OCCUR_DATE)
+
+nypd_shooting <- nypd_shooting[!is.na(nypd_shooting$OCCUR_DATE), ]
+
+incident_counts <- nypd_shooting %>% 
+  group_by(Year = year(OCCUR_DATE)) %>%
+  summarize(IncidentCount = n())
+
+incident_counts <- na.omit(incident_counts)
+
+ggplot(incident_counts, aes(x=Year, y=IncidentCount)) + 
+  geom_bar(stat="identity", fill = "skyblue") +
+  labs(title = "Incidents Per Year", x = "Year", y = "Number of Incidents")
+
+model <- lm(IncidentCount ~ Year, data = incident_counts)
+summary(model)
+
+new_data <- data.frame(Year = 2023) 
+predicted_incidents_2023 <- predict(model, newdata = new_data)
+
+predicted_incidents_2023
+
+```
+## Graph & Model Analysis 
+
+The most notable data point that sticks out in the "Incidents Per Year" graph is the large spike in incidents between 2019 and 2020. This is the largest year over year change between two years. 2020 was the beginning of the COVID-19 global pandemic and it was a time when racial justice issues were a hot topic in the United States. Based on this chart, it seems like there is a need to investigate those factors or others that could have led to this dramatic increase in incidents. 
+
+A model was run to predict the number of incidents in 2023. It came back with 529.41. This would be a drop from 2022 following the pattern of a dip in incidents following a spike year. However, the p-value for this model was .17 and thus not fully reliable though it does seem likely to see a drop of some sort (though maybe not as drastic) for 2023. 
+
+# Victim Race Analysis 
+
+```{r barchart, message=FALSE}
+library(tidyverse)
+
+nypd_shooting <- nypd_shooting %>%
+  filter(!is.na(VIC_RACE) & VIC_RACE != "UNKNOWN")
+
+incident_counts_by_race <- nypd_shooting %>% 
+  group_by(VIC_RACE) %>%
+  summarize(IncidentCount = n())
+
+ggplot(incident_counts_by_race, aes(x = "", y = IncidentCount, fill = VIC_RACE)) + 
+  geom_bar(stat="identity", width=1) + 
+  coord_polar(theta = "y") + 
+  labs (
+    title = "Distribution of Incidents by Victim Race",
+    fill = "Victim Race",
+    x= NULL,
+    y=NULL
+  ) + 
+  theme_minimal() + 
+  scale_fill_brewer(type = "qual", palette = "Set3") +
+  geom_text(aes(label = paste0(round(IncidentCount / sum(IncidentCount)*100,1),"%")),
+            position = position_stack(vjust = 0.4),
+            size=3) + 
+  theme_void()
+
+```
+
+## Graph Analysis 
+
+The "Distribution of Incidents by Victim Race" shows an overwhelming majority of the incident victims have been Black (over 80% include Black Hispanic victims). This is concerning because the population of New York has only fluctuated around 25-20% in the years this data spans (according to the US census online quick facts). 
+
+## Potential Bias 
+An important note here - there were some records were the victims race was "UNKNOWN" or missing in the original data set. These records were excluded from the analysis. Also, it is not clear if victims are self reporting their race in some manner or if someone completing the report is choosing a race for the victim. This could lead to some biased or incorrect records. 
+
+## Session Inforamtion 
+
+```{r sessioninfo, echo=FALSE}
+  sessioninfo::session_info()
+```
