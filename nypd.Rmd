@@ -100,7 +100,7 @@ The "Distribution of Incidents by Victim Race" shows an overwhelming majority of
 ## Potential Bias 
 An important note here - there were some records were the victims race was "UNKNOWN" or missing in the original data set. These records were excluded from the analysis. Also, it is not clear if victims are self reporting their race in some manner or if someone completing the report is choosing a race for the victim. This could lead to some biased or incorrect records. 
 
-## Session Inforamtion 
+## Session Information 
 
 ```{r sessioninfo, echo=FALSE}
   sessioninfo::session_info()
