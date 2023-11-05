@@ -1,0 +1,208 @@
+---
+title: "COVID-19 Data Report"
+author: "Allison Flors"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction 
+
+This report will utilize data from the Center for Systems Science and Engineering at Johns Hopkins University. The data contains information about COVID-19 cases and deaths. The data is organized in sets for global cases and specifically US cases. Data was collected starting at the beginning of the pandemic through March 10th, 2023.  
+
+```{r getdata, message=FALSE} 
+library(tidyverse)
+
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- 
+c("time_series_covid19_confirmed_global.csv", 
+  "time_series_covid19_deaths_global.csv", 
+  "time_series_covid19_confirmed_US.csv", 
+  "time_series_covid19_deaths_US.csv") 
+
+urls <- str_c(url_in,file_names)
+```
+
+```{r importdata, message=FALSE}
+global_cases <- read_csv(urls[1])
+global_deaths <- read_csv(urls[2])
+US_cases <- read_csv(urls[3])
+US_deaths <- read_csv(urls[4])
+```
+
+## Data Cleansing 
+
+In order to first make the data more usable in analysis, it is necessary to change the orientation of the data using pivot_longer. Here are some examples: 
+
+
+```{r tidydata}
+global_cases <- global_cases %>%
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+                  names_to = "date",
+                  values_to = "cases") %>% 
+select(-c(Lat,Long))
+```
+
+```{r tidydeath1}
+global_deaths <- global_deaths %>%
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(-c(Lat,Long))
+```
+
+Next, we are going to combine the data sets using a full_join and clean up some of the names and formats. 
+
+```{r glovar}
+global_cases <- global_cases %>% 
+  full_join(global_deaths) %>%
+  rename(Country_Region = 'Country/Region', Province_State = 'Province/State') %>%
+  mutate(date = mdy(date))
+``` 
+
+Next, we will filter to only look at records where cases are greater than 0 so we have some data to work with. 
+
+```{r filterglob}
+global_cases <- global_cases %>% filter(cases > 0)
+```
+
+```{r caspiv, messge=FALSE}
+US_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+             names_to = "date",
+             values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat,Long_))
+```
+
+```{r deathtime, message=FALSE}
+US_deaths <- US_deaths %>%
+  pivot_longer(cols = -(UID:Population),
+               names_to = "date",
+               values_to = "deaths") %>% 
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat,Long_))
+
+```
+
+# Data Visualization & Analysis 
+
+## Cases Per Year 
+
+First, we'll explore which year had the most COVID-19 cases globally (recalling that 2023 was only recorded through March).
+
+The year function and summarizing the counts will create this bar chart: 
+
+```{r caseyear, message=FALSE}
+global_cases$year <- year(global_cases$date) 
+
+year_summary <- global_cases %>%
+  group_by(year) %>%
+  summarize(case_sum = sum(cases))
+
+ggplot(year_summary, aes(x=year, y=case_sum)) + 
+  geom_bar(stat="identity") +
+  labs(title = "Number of Cases Per Year", x = "Year", y = "Number of Cases")
+
+```
+
+2022 clearly had the most cases globally. How does this compare if filter for just cases in the United States? 
+
+```{r caseyearus, message=FALSE}
+
+data_us <- global_cases %>% filter(Country_Region == "US")
+
+data_us$year <- year(data_us$date) 
+
+us_summary <- data_us %>%
+  group_by(year) %>%
+  summarize(case_sum = sum(cases))
+
+ggplot(us_summary, aes(x=year, y=case_sum)) + 
+  geom_bar(stat="identity") +
+  labs(title = "Number of Cases Per Year", x = "Year", y = "Number of Cases")
+
+```
+
+After adding a filter for just US cases, it looks like the US pattern of cases spiking in 2022 matches the rest of the world. 
+
+## Deaths Per Year 
+
+Let's create the same two graphs but this time looking at deaths instead of cases to see the distribution over the years. 
+
+```{r deathyear, message=FALSE}
+
+year_summary_d <- global_cases %>%
+  group_by(year) %>%
+  summarize(death_sum = sum(deaths))
+
+ggplot(year_summary_d, aes(x=year, y=death_sum)) + 
+  geom_bar(stat="identity") +
+  labs(title = "Number of Deaths Per Year", x = "Year", y = "Number of Deaths")
+
+```
+Here we can see that deaths are still the highest in 2022, but it looks like the deaths compared to number of cases is higher for 2021. This could use more investigation, but we could hypothesize that increased vaccinations and treatments for COVID-19 played a role in reducing the case to death ratio from 2021 to 2022 - good news! Let's compare for US only: 
+
+```{r casedeathus, message=FALSE}
+
+us_summary_d <- data_us %>%
+  group_by(year) %>%
+  summarize(death_sum = sum(deaths))
+
+ggplot(us_summary_d, aes(x=year, y=death_sum)) + 
+  geom_bar(stat="identity") +
+  labs(title = "Number of Deaths Per Year", x = "Year", y = "Number of Deaths")
+
+```
+Again, it looks like the United States COVID-19 trends match those of the rest of the world. 
+
+## Data Model 
+
+We can use a data model to dig into the relationship between cases and deaths and compare 2021 to 2022 in the US. 
+
+Let's first look at 2021: 
+
+```{r casemodel2021, message=FALSE}
+
+data_2021 <- data_us %>%
+  filter(year == 2021)
+
+model_2021 <- lm(deaths ~ cases, data = data_2021)
+
+summary(model_2021)
+
+ggplot(data_2021, aes(x= cases, y=deaths)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  labs(title="Regression: Deaths vs. Cases in 2021", x = "Cases", y="Deaths")
+```
+
+And we'll look at the same regression for 2022: 
+
+```{r casemodel2022, message=FALSE}
+
+data_2022 <- data_us %>%
+  filter(year == 2022)
+
+model_2022 <- lm(deaths ~ cases, data = data_2022)
+
+summary(model_2022)
+
+ggplot(data_2022, aes(x= cases, y=deaths)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  labs(title="Regression: Deaths vs. Cases in 2022", x = "Cases", y="Deaths")
+```
+From these graphs, we can see that the linear fit does not match the data as well in 2022 as it does in 2021. This confirms our theory that the case to death relationship is stronger in 2021 than it is in 2022. More research would be needed to determine the exact cause of this trend but it is likely the increased access to vaccines and general awareness about the disease. 
+
+## Conclusion 
+
+From the time these cases were recorded, the year 2022 had the most global COVID-19 cases. Another interesting finding was that the case to death relationship became less significant from 2021 to 2022. So, even though there were more cases in 2022, they were less likely to result in death. This implies that the response and management of the pandemic improved from 2021 to 2022. 
